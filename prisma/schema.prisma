@@ -1,0 +1,48 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "mysql"
+    url      = env("DATABASE_URL")
+}
+
+model User {
+    id            String       @id @default(uuid())
+    email         String       @unique
+    password      String
+    refreshToken  String?      @db.VarChar(255)
+    twoFactor     TwoFactor?
+    devices       UserDevice[]
+    lastHeartbeat DateTime?    @default(now())
+    showStatus    Boolean      @default(true)
+    createdAt     DateTime     @default(now())
+    googleId      String? // Store the user's Google ID
+    googleEmail   String? // Store the user's Google email (optional)
+}
+
+model TwoFactor {
+    id              String  @id @default(uuid())
+    secretKey       String
+    twoFactorQRCode String
+    isEnabled       Boolean
+    recoveryCodes   String  @db.Text // Store recovery codes as a JSON or string value
+
+    // Define a one-to-one relationship with the User model
+    user   User   @relation(fields: [userId], references: [id])
+    userId String @unique
+}
+
+model UserDevice {
+    id         String   @id @default(uuid())
+    userId     String
+    deviceName String // A user-friendly name for the device
+    deviceType String // Mobile, Desktop, Tablet, etc.
+    deviceId   String   @unique // A unique identifier for the device (e.g., device fingerprint)
+    createdAt  DateTime @default(now())
+    lastUsed   DateTime @default(now())
+    User       User     @relation(fields: [userId], references: [id])
+}
