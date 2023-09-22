@@ -36,21 +36,35 @@ const backupCodes = async () => {
 
 const twoFactorEnabled = (user) => {
     debugLog(`checking if 2FA is enabled for user ${user.email}`);
-    return user.twoFactor.isEnabled;
+    return user.twoFactor?.isEnabled;
 };
 
-const verifyTwoFactorCode = (user, twoFACode) => {
+const verifyTwoFactorCode = (user, code, uniqueToken) => {
     debugLog(`verifying 2FA code for user ${user.email}`);
     const { secretKey } = user.twoFactor;
 
-    const verified = speakeasy.totp.verify({
-        secret: secretKey,
-        encoding: 'base32',
-        token: twoFACode,
-    });
+    if (user.twoFactor.uniqueToken === uniqueToken ) {
+            const verified = speakeasy.totp.verify({
+            secret: secretKey,
+            encoding: 'base32',
+            token: code,
+        });
 
-    return verified;
+        return verified;
+    };
+    return false;
 };
+
+const crypto = require('crypto');
+
+// Function to generate a random unique token
+function generateUniqueToken() {
+  // Generate a random 32-byte (256-bit) token
+  const token = crypto.randomBytes(32).toString('hex');
+  return token;
+}
+
+
 
 
 module.exports = {
@@ -59,6 +73,7 @@ module.exports = {
     backupCodes,
     twoFactorEnabled,
     verifyTwoFactorCode,
+    generateUniqueToken
 };
 
 

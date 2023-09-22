@@ -26,6 +26,8 @@ model User {
 
 model TwoFactor {
     id              String  @id @default(uuid())
+    uniqueToken String? @unique
+    expirationTime  DateTime? 
     secretKey       String
     twoFactorQRCode String
     isEnabled       Boolean

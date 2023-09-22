@@ -20,28 +20,16 @@ const getUser = async (ctx) => {
   ctx.body = user;
 };
 
-
-
-
 module.exports = (app) => {
   const router = new Router({
     prefix: "/users",
   });
 
-  router.post(
-    "/register",
-    registerUser
-  );
+  router.post("/register", registerUser);
 
-  router.post(
-    "/login",
-    loginUser
-  );
+  router.post("/login", loginUser);
 
-  router.get(
-    "/:email",
-    getUser
-  );
-    
+  router.get("/:email", getUser);
+
   app.use(router.routes()).use(router.allowedMethods());
 };
