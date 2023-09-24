@@ -16,6 +16,8 @@ model User {
     password      String
     refreshToken  String?      @db.VarChar(255)
     twoFactor     TwoFactor?
+    uniqueToken   String?      @unique
+    expirationTime DateTime?
     devices       UserDevice[]
     lastHeartbeat DateTime?    @default(now())
     showStatus    Boolean      @default(true)

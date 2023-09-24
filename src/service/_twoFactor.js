@@ -78,8 +78,6 @@ const disableTwoFactor = async (emailUser) => {
 };
 
 const verifyTwoFactorCode = async ({ code, jwtToken }) => {
-  debugLog(`verifying 2FA code for user ${jwtToken}`);
-
   try {
     const decodedToken = jwt.verify(jwtToken, process.env.JWT_SECRET);
     const { userId, uniqueToken } = decodedToken;
@@ -90,20 +88,26 @@ const verifyTwoFactorCode = async ({ code, jwtToken }) => {
       },
     });
 
+    debugLog(`verifying 2FA code for user ${foundUser.id}`);
+
     if (!foundUser) {
       throw new ServiceError("User not found", 404);
     }
 
-    const twoFa = await getPrisma().twoFactor.findFirst({
+    const twoFa = await getPrisma().twoFactor.findUnique({
       where: {
-        userId,
+        userId: foundUser.id,
       },
     });
 
+    debugLog(`2FA ${twoFa.secretKey}`);
     if (!twoFa) {
       throw new ServiceError("2FA not enabled", 404);
     }
 
+    if (!twoFa.uniqueToken) {
+      throw new ServiceError("Invalid url", 401);
+    }
     const isMatch = bcrypt.compare(uniqueToken, twoFa.uniqueToken);
 
     if (!isMatch) {
@@ -140,6 +144,7 @@ const verifyTwoFactorCode = async ({ code, jwtToken }) => {
       },
       data: {
         uniqueToken: null,
+        expirationTime: null,
       },
     });
 
@@ -169,7 +174,7 @@ const deleteUniqueToken = async ({ jwtToken }) => {
       },
     });
   } catch (error) {
-    pass;
+    throw new ServiceError("Url no longer exists", 401);
   }
   return { deleted: true };
 };

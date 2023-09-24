@@ -20,6 +20,11 @@ const getUser = async (ctx) => {
   ctx.body = user;
 };
 
+const forgotPassword = async (ctx) => {
+  const user = await userService.forgotPassword(ctx.request.body);
+  ctx.body = user;
+};
+
 module.exports = (app) => {
   const router = new Router({
     prefix: "/users",
@@ -28,6 +33,8 @@ module.exports = (app) => {
   router.post("/register", registerUser);
 
   router.post("/login", loginUser);
+
+  router.post("/forgot-password", forgotPassword);
 
   router.get("/:email", getUser);
 
