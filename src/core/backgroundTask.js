@@ -27,6 +27,18 @@ const deleteExpiredUniqueTokens = async () => {
       },
     });
 
+    await getPrisma().user.updateMany({
+      where: {
+        expirationTime: {
+          lt: currentTime,
+        },
+      },
+      data: {
+        expirationTime: null,
+        uniqueToken: null,
+      },
+    });
+
     debugLog("Expired uniqueTokens deleted successfully.");
   } catch (error) {
     throw new ServiceError("Error deleting expired uniqueTokens:", error);

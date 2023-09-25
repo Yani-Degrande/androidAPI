@@ -99,8 +99,84 @@ const verifyTwoFactorCode = async ({ code, jwtToken }) => {
         userId: foundUser.id,
       },
     });
+    if (!twoFa) {
+      throw new ServiceError("2FA not enabled", 404);
+    }
 
-    debugLog(`2FA ${twoFa.secretKey}`);
+    if (!twoFa.uniqueToken) {
+      throw new ServiceError("Invalid url", 401);
+    }
+    const isMatch = bcrypt.compare(uniqueToken, twoFa.uniqueToken);
+
+    if (!isMatch) {
+      throw new ServiceError("Invalid unique token", 401);
+    }
+
+    const { secretKey } = twoFa;
+
+    const verified = speakeasy.totp.verify({
+      secret: secretKey,
+      encoding: "base32",
+      token: code,
+    });
+
+    if (!verified) {
+      throw new ServiceError("Invalid 2FA code", 401);
+    }
+
+    const accessToken = generateAccessToken({ userId: foundUser.id });
+    const refreshToken = generateRefreshToken({ userId: foundUser.id });
+
+    await getPrisma().user.update({
+      where: {
+        id: foundUser.id,
+      },
+      data: {
+        refreshToken,
+      },
+    });
+
+    await getPrisma().twoFactor.update({
+      where: {
+        id: twoFa.id,
+      },
+      data: {
+        uniqueToken: null,
+        expirationTime: null,
+      },
+    });
+
+    return {
+      accessToken,
+      refreshToken,
+    };
+  } catch (error) {
+    throw new ServiceError("Incorrect url", 401);
+  }
+};
+
+const verifyTwoFactorCodePasswordReset = async ({ code, jwtToken }) => {
+  try {
+    const decodedToken = jwt.verify(jwtToken, process.env.JWT_SECRET);
+    const { userId, uniqueToken } = decodedToken;
+
+    const foundUser = await getPrisma().user.findUnique({
+      where: {
+        id: userId,
+      },
+    });
+
+    debugLog(`verifying 2FA code for user ${foundUser.id}`);
+
+    if (!foundUser) {
+      throw new ServiceError("User not found", 404);
+    }
+
+    const twoFa = await getPrisma().twoFactor.findUnique({
+      where: {
+        userId: foundUser.id,
+      },
+    });
     if (!twoFa) {
       throw new ServiceError("2FA not enabled", 404);
     }
@@ -184,4 +260,5 @@ module.exports = {
   disableTwoFactor,
   verifyTwoFactorCode,
   deleteUniqueToken,
+  verifyTwoFactorCodePasswordReset,
 };

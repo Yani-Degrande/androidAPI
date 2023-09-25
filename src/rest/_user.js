@@ -25,6 +25,11 @@ const forgotPassword = async (ctx) => {
   ctx.body = user;
 };
 
+const resetPassword = async (ctx) => {
+  const user = await userService.resetPassword(ctx.request.body);
+  ctx.body = user;
+};
+
 module.exports = (app) => {
   const router = new Router({
     prefix: "/users",
@@ -35,6 +40,8 @@ module.exports = (app) => {
   router.post("/login", loginUser);
 
   router.post("/forgot-password", forgotPassword);
+
+  router.post("/reset-password", resetPassword);
 
   router.get("/:email", getUser);
 
