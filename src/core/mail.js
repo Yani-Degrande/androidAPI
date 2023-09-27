@@ -9,6 +9,112 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+const sendRegisterConfirmationEmail = async (email) => {
+  const mailOptions = {
+    from: process.env.EMAIL_USERNAME,
+    to: email,
+    subject: "Registration Confirmation",
+    html: `      <html>
+        <head>
+          <style>
+            /* Add your custom email styles here */
+            body {
+              font-family: Arial, sans-serif;
+              background-color: #f4f4f4;
+              margin: 0;
+              padding: 0;
+            }
+            .email-container {
+              max-width: 600px;
+              margin: 0 auto;
+              padding: 20px;
+              border: 1px solid #ddd;
+              border-radius: 5px;
+              background-color: #fff;
+              box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            }
+            .header {
+              text-align: center;
+              padding: 20px 0;
+            }
+            .header img {
+              max-width: 100px; /* Adjust the size of your logo */
+              margin-bottom: 10px;
+              margin-left: 15px;
+              transform: translateY(-15px);
+              float: left;
+            }
+            .message {
+              padding: 20px;
+              background-color: #fff;
+              border-radius: 5px;
+              box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            }
+            .message p {
+              font-size: 16px;
+              color: #555;
+              line-height: 1.5;
+              margin-bottom: 10px;
+            }
+
+            .disclaimer {
+              font-size: 14px;
+              color: #777;
+              margin-top: 20px;
+            }
+            .divider {
+              border-top: 1px solid #ddd; 
+              margin: 20px 0;
+            }
+            .divider: first-child {
+              transform: translateY(5px);
+            }
+            .footer {
+              font-size: 12px;
+              color: #777;
+              margin-top: 20px;
+              text-align: center;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="email-container">
+            <div class="header">
+              <img src="cid:logo" alt="Company Logo" /> <!-- Replace with your logo image URL -->
+            </div>
+            <hr class="divider" />
+            <div class="message">
+              <p>Dear valued user,</p>
+              <p>Welcome aboard! We're excited to have you as part of our community.</p>
+              <p>Your account has been successfully created with the email: ${email}. From here, you'll have access to a world of possibilities and resources to enhance your experience with us.</p>
+              <p>If you ever have any questions or need assistance, don't hesitate to reach out to our dedicated Support team. We're here to help you every step of the way.</p>
+              <p>Thank you for choosing us, and we look forward to serving you!</p>
+              <br />
+              <p>- The Degrande Development Team</p>
+            </div>
+            <hr class="divider" />
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} Degrande Development</p>
+            </div>
+          </div>
+        </body>
+      </html> `,
+    attachments: [
+      {
+        filename: "logo.png",
+        path: "./src/assets/logo.png",
+        cid: "logo", //same cid value as in the html img src
+      },
+    ],
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+  } catch (error) {
+    throw new ServiceError("Error sending password reset email", error);
+  }
+};
+
 const sendPasswordResetEmail = async (email, resetLink) => {
   const mailOptions = {
     from: process.env.EMAIL_USERNAME,
@@ -170,7 +276,7 @@ const sendPasswordResetEmail = async (email, resetLink) => {
   try {
     await transporter.sendMail(mailOptions);
   } catch (error) {
-    throw new ServiceError("Error sending password reset email", error);
+    throw new ServiceError("Error sending register email", error);
   }
 };
 
@@ -339,4 +445,5 @@ const sendPasswordResetConfirmationEmail = async (email) => {
 module.exports = {
   sendPasswordResetEmail,
   sendPasswordResetConfirmationEmail,
+  sendRegisterConfirmationEmail,
 };

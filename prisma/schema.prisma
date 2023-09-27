@@ -24,6 +24,18 @@ model User {
     createdAt     DateTime     @default(now())
     googleId      String? // Store the user's Google ID
     googleEmail   String? // Store the user's Google email (optional)
+    tokens        Tokens[]
+}
+
+model Tokens {
+    id String @id @default(uuid())
+    token String
+    fullName String
+    expirationTime DateTime?
+
+    // Define a one-to-one relationship with the User model
+    user   User   @relation(fields: [userId], references: [id])
+    userId String @unique
 }
 
 model TwoFactor {

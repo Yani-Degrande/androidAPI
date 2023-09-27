@@ -1,40 +1,73 @@
+// - Dependencies
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+
+// - Local dependencies
 const { getLogger } = require("../core/logger.js");
+const { getPrisma } = require("../data/index.js");
+const ServiceError = require("../core/serviceError");
+const { checkPassword } = require("../core/auth.js");
+const { createTokens } = require("./_tokens.js");
+const { twoFactorEnabled, generateUniqueToken } = require("./_2fa.js");
+const { generateAccessToken, generateRefreshToken } = require("./_token.js");
 const {
   sendPasswordResetEmail,
   sendPasswordResetConfirmationEmail,
+  sendRegisterConfirmationEmail,
 } = require("../core/mail.js");
-const ServiceError = require("../core/serviceError");
-const { getPrisma } = require("../data/index.js");
 
-const { generateAccessToken, generateRefreshToken } = require("./_token.js");
-const { checkPassword } = require("../core/auth.js");
-const { twoFactorEnabled, generateUniqueToken } = require("./_2fa.js");
-const bcrypt = require("bcryptjs");
-
-const jwt = require("jsonwebtoken");
-
+// - Logger
 const debugLog = (message, meta = {}) => {
   if (!this.logger) this.logger = getLogger();
   this.logger.debug(message, meta);
 };
 
-// === functions ===
+// =========== functions =================
+
+// - Register user
 const register = async (user) => {
   const { email, password } = user;
   debugLog(`registering user ${email}`);
 
-  const newUser = await getPrisma().user.create({
-    data: {
-      email,
-      password: await bcrypt.hash(password, 10),
-    },
-  });
+  try {
+    const foundUser = await getUserByEmail(email);
+    if (foundUser) {
+      throw new ServiceError(400, "User already exists"); // Check if user exists
+    }
+  } catch (error) {
+    if (error.code === 404) {
+      // User not found, so we can continue
+      try {
+        // Create user
+        const newUser = await getPrisma().user.create({
+          data: {
+            email,
+            password: await bcrypt.hash(password, 10),
+          },
+        });
 
-  return newUser;
+        try {
+          await sendRegisterConfirmationEmail(email); // Send confirmation email
+        } catch (error) {
+          throw new ServiceError(
+            400,
+            "Email does not exist or error sending confirmation email"
+          );
+        }
+
+        return newUser;
+      } catch (error) {
+        throw new ServiceError(400, "Error creating user");
+      }
+    }
+    throw error;
+  }
 };
 
+// - Get user by email
 const getUserByEmail = async (email) => {
   debugLog(`getting user ${email}`);
+
   const foundUser = await getPrisma().user.findUnique({
     where: {
       email,
@@ -45,7 +78,27 @@ const getUserByEmail = async (email) => {
   });
 
   if (!foundUser) {
-    throw new ServiceError("User not found", 404);
+    throw new ServiceError(404, "User not found");
+  }
+
+  return foundUser;
+};
+
+// - Get user by id
+const getUserById = async (id) => {
+  debugLog(`getting user ${id}`);
+
+  const foundUser = await getPrisma().user.findUnique({
+    where: {
+      id,
+    },
+    include: {
+      twoFactor: true,
+    },
+  });
+
+  if (!foundUser) {
+    throw new ServiceError(404, "User not found");
   }
 
   return foundUser;
@@ -55,65 +108,84 @@ const login = async (user) => {
   const { email, password } = user;
   debugLog(`logging in user ${email}`);
 
-  const foundUser = await getUserByEmail(email);
+  try {
+    const foundUser = await getUserByEmail(email); // Check if user exists
+    if (!foundUser) {
+      throw new ServiceError(404, "User not found");
+    }
 
-  const isMatch = await checkPassword(password, foundUser.password);
+    // Check password
+    const isMatch = await checkPassword(password, foundUser.password);
+    if (!isMatch) {
+      throw new ServiceError(401, "Invalid password");
+    }
 
-  if (!isMatch) {
-    throw new ServiceError("Invalid password", 401);
+    // Check if 2FA is enabled
+    if (twoFactorEnabled(foundUser)) {
+      try {
+        const uniqueToken = await createTokens({
+          expirationTime: process.env.MFA_JWT_EXPIRES_IN,
+          fullname: "2FA",
+          userId: foundUser.id,
+        });
+
+        return {
+          status: 302,
+          message: "2FA is required",
+          uniqueToken,
+        };
+      } catch (error) {
+        throw error;
+      }
+    }
+
+    // 2FA is not enabled, so we can generate tokens
+    try {
+      const { accessToken, refreshToken } = await updateUserTokens(foundUser);
+      return {
+        accessToken,
+        refreshToken,
+      };
+    } catch (error) {
+      throw error;
+    }
+  } catch (error) {
+    throw error;
   }
+};
 
-  if (twoFactorEnabled(foundUser)) {
-    // 2FA is enabled for the user,verify the 2FA code
+const updateUserTokens = async (user) => {
+  const { id } = user;
+  debugLog(`updating tokens for user ${id}`);
 
-    const uniqueToken = generateUniqueToken(); // Implement a secure token generation function
-    const uniqueTokenHash = await bcrypt.hash(uniqueToken, 10); // Hash the token
-    const tokenPayload = {
-      userId: foundUser.id,
-      uniqueToken,
-    };
-    const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, {
-      expiresIn: "4m",
-    });
+  try {
+    const foundUser = await getUserById(id); // Check if user exists
+    if (!foundUser) {
+      throw new ServiceError(404, "User not found");
+    }
 
-    const expirationTime = new Date();
-    expirationTime.setMinutes(expirationTime.getMinutes() + 4);
-    await getPrisma().twoFactor.update({
+    const accessToken = generateAccessToken({ userId: foundUser.id });
+    const refreshToken = generateRefreshToken({ userId: foundUser.id });
+
+    await getPrisma().user.update({
       where: {
-        userId: foundUser.id,
+        id: foundUser.id,
       },
       data: {
-        uniqueToken: uniqueTokenHash, // Store the hashed token in the database
-        expirationTime: expirationTime, // Set the calculated expiration time
+        refreshToken,
       },
     });
 
-    // Server-side code
-    const response = {
-      status: 302,
-      message: "2FA is required",
-      uniqueToken: token, // Include the unique token in the response
-    };
-
-    return response;
-  }
-
-  const accessToken = generateAccessToken({ userId: foundUser.id });
-  const refreshToken = generateRefreshToken({ userId: foundUser.id });
-
-  await getPrisma().user.update({
-    where: {
-      id: foundUser.id,
-    },
-    data: {
+    return {
+      accessToken,
       refreshToken,
-    },
-  });
-
-  return {
-    accessToken,
-    refreshToken,
-  };
+    };
+  } catch (error) {
+    if (error.code === 404) {
+      throw error;
+    }
+    throw new ServiceError(400, "Error updating tokens");
+  }
 };
 
 const forgotPassword = async ({ email }) => {
@@ -268,4 +340,5 @@ module.exports = {
   getUserByEmail,
   forgotPassword,
   resetPassword,
+  getUserById,
 };
