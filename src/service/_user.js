@@ -104,6 +104,8 @@ const getUserById = async (id) => {
   return foundUser;
 };
 
+
+// - Login user
 const login = async (user) => {
   const { email, password } = user;
   debugLog(`logging in user ${email}`);
@@ -154,6 +156,7 @@ const login = async (user) => {
   }
 };
 
+// - Update user tokens
 const updateUserTokens = async (user) => {
   const { id } = user;
   debugLog(`updating tokens for user ${id}`);
@@ -164,6 +167,7 @@ const updateUserTokens = async (user) => {
       throw new ServiceError(404, "User not found");
     }
 
+    // Generate tokens
     const accessToken = generateAccessToken({ userId: foundUser.id });
     const refreshToken = generateRefreshToken({ userId: foundUser.id });
 
@@ -180,6 +184,7 @@ const updateUserTokens = async (user) => {
       accessToken,
       refreshToken,
     };
+
   } catch (error) {
     if (error.code === 404) {
       throw error;
@@ -188,53 +193,79 @@ const updateUserTokens = async (user) => {
   }
 };
 
+// - Forgot password
 const forgotPassword = async ({ email }) => {
   debugLog(`Forgot password for user ${email}`);
 
-  const foundUser = await getUserByEmail(email);
-
-  if (!foundUser) {
-    throw new ServiceError("User not found", 404);
-  }
-
-  const uniqueToken = generateUniqueToken(); // Implement a secure token generation function
-  const uniqueTokenHash = await bcrypt.hash(uniqueToken, 10); // Hash the token
-
-  const tokenPayload = {
-    userId: foundUser.id,
-    uniqueToken,
-  };
-
-  const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, {
-    expiresIn: "4m",
-  });
-
-  const expirationTime = new Date();
-  expirationTime.setMinutes(expirationTime.getMinutes() + 4);
-
-  await getPrisma().user.update({
-    where: {
-      id: foundUser.id,
-    },
-    data: {
-      uniqueToken: uniqueTokenHash, // Store the hashed token in the database
-      expirationTime: expirationTime, // Set the calculated expiration time
-    },
-  });
-
-  const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
-
   try {
-    await sendPasswordResetEmail(email, resetLink);
-  } catch (error) {
-    throw new ServiceError("Error sending password reset email", error);
-  }
-  return {
-    message: "Password reset link sent",
+    const foundUser = await getUserByEmail(email); // Check if user exists
+    if (!foundUser) {
+      throw new ServiceError(404, "User not found");
+    }
 
-    // For testing purposes
-    resetLink,
-  };
+    try {
+        await createTokens({
+          expirationTime: process.env.PWR_JWT_EXPIRES_IN,
+          fullname: "Password Reset",
+          userId: foundUser.id,
+        });
+      
+      const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${foundUser.tokens.uniqueToken}`;
+
+      try {
+        await sendPasswordResetEmail(email, resetLink);
+      } catch (error) {
+        throw new ServiceError("Error sending password reset email", error);
+      }
+
+      } catch (error) {
+        throw error;
+      }
+  } catch (error) {
+
+  }
+
+  
+  
+
+  // const uniqueToken = generateUniqueToken(); // Implement a secure token generation function
+  // const uniqueTokenHash = await bcrypt.hash(uniqueToken, 10); // Hash the token
+
+  // const tokenPayload = {
+  //   userId: foundUser.id,
+  //   uniqueToken,
+  // };
+
+  // const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, {
+  //   expiresIn: "4m",
+  // });
+
+  // const expirationTime = new Date();
+  // expirationTime.setMinutes(expirationTime.getMinutes() + 4);
+
+  // await getPrisma().user.update({
+  //   where: {
+  //     id: foundUser.id,
+  //   },
+  //   data: {
+  //     uniqueToken: uniqueTokenHash, // Store the hashed token in the database
+  //     expirationTime: expirationTime, // Set the calculated expiration time
+  //   },
+  // });
+
+  // const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
+
+  // try {
+  //   await sendPasswordResetEmail(email, resetLink);
+  // } catch (error) {
+  //   throw new ServiceError("Error sending password reset email", error);
+  // }
+  // return {
+  //   message: "Password reset link sent",
+
+  //   // For testing purposes
+  //   resetLink,
+  // };
 };
 
 const resetPassword = async (data) => {
