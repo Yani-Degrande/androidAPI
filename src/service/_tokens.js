@@ -60,6 +60,21 @@ const createTokens = async ({ expirationTime, fullname, userId }) => {
   }
 };
 
+const deleteTokens = async (userId) => {
+  debugLog(`deleting tokens for user ${userId}`);
+
+  try {
+    await getPrisma().token.deleteMany({
+      where: {
+        userId: userId,
+      },
+    });
+  } catch (error) {
+    throw new ServiceError(400, "Error deleting tokens");
+  }
+}
+
 module.exports = {
   createTokens,
+  deleteTokens,
 };

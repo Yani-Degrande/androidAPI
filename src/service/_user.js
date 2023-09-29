@@ -7,7 +7,7 @@ const { getLogger } = require("../core/logger.js");
 const { getPrisma } = require("../data/index.js");
 const ServiceError = require("../core/serviceError");
 const { checkPassword } = require("../core/auth.js");
-const { createTokens } = require("./_tokens.js");
+const { createTokens, deleteTokens } = require("./_tokens.js");
 const { twoFactorEnabled, generateUniqueToken } = require("./_2fa.js");
 const { generateAccessToken, generateRefreshToken } = require("./_token.js");
 const {
@@ -222,7 +222,7 @@ const forgotPassword = async ({ email }) => {
         throw error;
       }
   } catch (error) {
-
+    throw error;
   }
 
   
@@ -274,95 +274,75 @@ const resetPassword = async (data) => {
   if (password !== repeatPassword) {
     throw new ServiceError("Passwords do not match", 400);
   }
-
+  
   const decodedToken = jwt.verify(token, process.env.JWT_SECRET);
   const { userId, uniqueToken } = decodedToken;
 
-  const foundUser = await getPrisma().user.findUnique({
-    where: {
-      id: userId,
-    },
-  });
-
+  const foundUser = await getUserById(userId); // Check if user exists
   if (!foundUser) {
-    throw new ServiceError("User not found", 404);
+    throw new ServiceError(404, "User not found");
   }
 
-  if (foundUser.uniqueToken && foundUser.expirationTime) {
-    const now = new Date();
+  if (!foundUser.tokens) {
+    throw new ServiceError(400, "Session expired"); // Check if user Session expired
+  }
 
-    if (now > foundUser.expirationTime) {
-      throw new ServiceError("Token expired", 400);
-    }
-    const isMatch = await bcrypt.compare(uniqueToken, foundUser.uniqueToken);
+  const now = new Date();
+  if (now > foundUser.tokens[0].expirationTime) {
+    throw new ServiceError(400, "Session expired"); // Check if user Session expired
+  }
 
-    if (!isMatch) {
-      throw new ServiceError("Invalid token", 400);
-    }
+  const isMatch = await bcrypt.compare(uniqueToken, foundUser.tokens[0].uniqueToken); // Check if token matches
+  if (!isMatch) {
+    throw new ServiceError(400, "Invalid token"); // Check if token matches
+  }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+  const hashedPassword = await bcrypt.hash(password, 10); // Hash the password
 
-    if (!twoFactorEnabled(foundUser)) {
-      // 2FA is not enabled for the user, so we can reset the password
+  if (!twoFactorEnabled(foundUser)) {
+    // 2FA is not enabled for the user, so we can reset the password
 
-      await getPrisma().user.update({
-        where: {
-          id: foundUser.id,
-        },
-        data: {
-          password: hashedPassword,
-          uniqueToken: null,
-          expirationTime: null,
-        },
-      });
-
-      try {
-        await sendPasswordResetConfirmationEmail(foundUser.email);
-      } catch (error) {
-        throw new ServiceError(
-          "Error sending password reset confirmation email",
-          error
-        );
-      }
-
-      return {
-        message: "Password reset successfully",
-      };
-    }
-
-    // 2FA is enabled for the user,verify the 2FA code
-
-    const uniqueToken = generateUniqueToken(); // Implement a secure token generation function
-    const uniqueTokenHash = await bcrypt.hash(uniqueToken, 10); // Hash the token
-    const tokenPayload = {
-      userId: foundUser.id,
-      uniqueToken,
-    };
-    const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, {
-      expiresIn: "4m",
-    });
-
-    const expirationTime = new Date();
-    expirationTime.setMinutes(expirationTime.getMinutes() + 4);
-    await getPrisma().twoFactor.update({
+    await getPrisma().user.update({
       where: {
-        userId: foundUser.id,
+        id: foundUser.id,
       },
       data: {
-        uniqueToken: uniqueTokenHash, // Store the hashed token in the database
-        expirationTime: expirationTime, // Set the calculated expiration time
+        password: hashedPassword,
       },
     });
 
-    // Server-side code
-    const response = {
+    try {
+       await deleteTokens(foundUser.id); // Delete all tokens for the user
+    } catch (error) {
+      throw error;
+    }
+   
+    try {
+      await sendPasswordResetConfirmationEmail(foundUser.email);
+    } catch (error) {
+      throw new ServiceError(400, "Error sending password reset confirmation email");
+    }
+    return {
+      message: "Password reset successfully",
+    };
+  }
+
+  try {
+    const uniqueToken = await createTokens({
+      expirationTime: process.env.MFA_JWT_EXPIRES_IN,
+      fullname: "2FA",
+      userId: foundUser.id,
+    });
+
+    return {
       status: 302,
       message: "2FA is required",
-      uniqueToken: token, // Include the unique token in the response
-    };
+      uniqueToken,
+      };
+    } catch (error) {
+      throw error;
+    }
 
-    return response;
-  }
 };
 
 module.exports = {

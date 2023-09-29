@@ -1,23 +1,26 @@
-const { getLogger } = require("../core/logger.js");
-const { getChildLogger } = require("../core/logger.js");
-const ServiceError = require("../core/serviceError");
-const { getPrisma } = require("../data/index.js");
-const speakeasy = require("speakeasy");
+// - Dependencies
+const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-bcrypt = require("bcryptjs");
+const speakeasy = require("speakeasy");
 
-const { generateSecretKey, backupCodes } = require("./_2fa.js");
+// - Local dependencies
+const { getPrisma } = require("../data/index.js");
+const { getLogger } = require("../core/logger.js");
+const ServiceError = require("../core/serviceError");
 const { getUserByEmail } = require("./_user.js");
+const { generateSecretKey, backupCodes } = require("./_2fa.js");
 const { generateAccessToken, generateRefreshToken } = require("./_token.js");
 
+// - Logger
 const debugLog = (message, meta = {}) => {
   if (!this.logger) this.logger = getLogger();
   this.logger.debug(message, meta);
 };
 
-// === functions ===
-const enableTwoFactor = async (emailUser) => {
-  const { email } = emailUser;
+// ============= functions =============
+
+// - Enable 2FA
+const enableTwoFactor = async ({email}) => {
   debugLog(`enabling 2FA for user ${email}`);
 
   // Check if the user already has a TwoFactor entry
@@ -30,10 +33,7 @@ const enableTwoFactor = async (emailUser) => {
   });
 
   if (existingTwoFactor) {
-    // If there is an existing TwoFactor entry, you may want to return an error
-    // or handle the update logic if necessary.
-    // For simplicity, this example does nothing if an entry already exists.
-    return { message: "2FA is already enabled for this user" };
+    throw new ServiceError(400, "2FA already enabled");
   }
 
   // If no existing entry, generate secret and create a new TwoFactor entry
@@ -57,6 +57,8 @@ const enableTwoFactor = async (emailUser) => {
   return secret.base32;
 };
 
+
+// - Disable 2FA
 const disableTwoFactor = async (emailUser) => {
   const { email } = emailUser;
   debugLog(`disabling 2FA for user ${email}`);
