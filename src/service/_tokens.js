@@ -17,15 +17,15 @@ const debugLog = (message, meta = {}) => {
 // =========== functions =================
 
 // - Create Tokens
-const createTokens = async ({ expirationTime, fullname, userId }) => {
-  debugLog(`creating ${fullname} tokens for user ${id}`);
+const createTokens = async ({ fullname, userId }) => {
+  debugLog(`creating ${fullname} tokens for user ${userId}`);
 
   const uniqueToken = generateUniqueToken(); // Generate a unique token
   const hashedToken = await bcrypt.hash(uniqueToken, 10); // Hash the token
 
   const tokenPayload = {
     userId: userId,
-    token: hashedToken,
+    token: uniqueToken,
   };
 
   // Create the token
@@ -35,28 +35,22 @@ const createTokens = async ({ expirationTime, fullname, userId }) => {
 
   // Create the expiration time
   const tokenExpirationTime = new Date();
-  tokenExpirationTime.setMinutes(
-    tokenExpirationTime.getMinutes() + expirationTime
-  );
+  tokenExpirationTime.setMinutes(tokenExpirationTime.getMinutes() + 4);
 
   try {
     // Store the token in the database
-    await getPrisma().token.create({
+    await getPrisma().tokens.create({
       data: {
-        token,
+        token: hashedToken,
         expirationTime: tokenExpirationTime,
-        fullname,
-      },
-      connect: {
-        user: {
-          id: userId,
-        },
+        fullName: fullname,
+        userId: userId,
       },
     });
 
-    return uniqueToken;
+    return token;
   } catch (error) {
-    throw new ServiceError(400, "Error creating tokens");
+    throw new ServiceError(400, "Error creating tokens", error);
   }
 };
 
@@ -64,7 +58,7 @@ const deleteTokens = async (userId) => {
   debugLog(`deleting tokens for user ${userId}`);
 
   try {
-    await getPrisma().token.deleteMany({
+    await getPrisma().tokens.deleteMany({
       where: {
         userId: userId,
       },
@@ -72,7 +66,7 @@ const deleteTokens = async (userId) => {
   } catch (error) {
     throw new ServiceError(400, "Error deleting tokens");
   }
-}
+};
 
 module.exports = {
   createTokens,

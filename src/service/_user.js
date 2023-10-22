@@ -6,7 +6,7 @@ const jwt = require("jsonwebtoken");
 const { getLogger } = require("../core/logger.js");
 const { getPrisma } = require("../data/index.js");
 const ServiceError = require("../core/serviceError");
-const { checkPassword } = require("../core/auth.js");
+const { checkPassword, checkToken } = require("../core/auth.js");
 const { createTokens, deleteTokens } = require("./_tokens.js");
 const { twoFactorEnabled, generateUniqueToken } = require("./_2fa.js");
 const { generateAccessToken, generateRefreshToken } = require("./_token.js");
@@ -78,7 +78,7 @@ const getUserByEmail = async (email) => {
   });
 
   if (!foundUser) {
-    throw new ServiceError(404, "User not found");
+    throw new ServiceError(404, "No user found with that email");
   }
 
   return foundUser;
@@ -98,12 +98,11 @@ const getUserById = async (id) => {
   });
 
   if (!foundUser) {
-    throw new ServiceError(404, "User not found");
+    throw new ServiceError(404, "No user found with that id");
   }
 
   return foundUser;
 };
-
 
 // - Login user
 const login = async (user) => {
@@ -112,14 +111,12 @@ const login = async (user) => {
 
   try {
     const foundUser = await getUserByEmail(email); // Check if user exists
-    if (!foundUser) {
-      throw new ServiceError(404, "User not found");
-    }
 
     // Check password
     const isMatch = await checkPassword(password, foundUser.password);
+    debugLog(`password match: ${isMatch}`);
     if (!isMatch) {
-      throw new ServiceError(401, "Invalid password");
+      throw new ServiceError(401, "Incorrect email or password");
     }
 
     // Check if 2FA is enabled
@@ -163,9 +160,6 @@ const updateUserTokens = async (user) => {
 
   try {
     const foundUser = await getUserById(id); // Check if user exists
-    if (!foundUser) {
-      throw new ServiceError(404, "User not found");
-    }
 
     // Generate tokens
     const accessToken = generateAccessToken({ userId: foundUser.id });
@@ -184,7 +178,6 @@ const updateUserTokens = async (user) => {
       accessToken,
       refreshToken,
     };
-
   } catch (error) {
     if (error.code === 404) {
       throw error;
@@ -199,73 +192,30 @@ const forgotPassword = async ({ email }) => {
 
   try {
     const foundUser = await getUserByEmail(email); // Check if user exists
-    if (!foundUser) {
-      throw new ServiceError(404, "User not found");
+
+    if (twoFactorEnabled(foundUser)) {
+      return { redirectToVerification: true };
     }
 
     try {
-        await createTokens({
-          expirationTime: process.env.PWR_JWT_EXPIRES_IN,
-          fullname: "Password Reset",
-          userId: foundUser.id,
-        });
-      
-      const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${foundUser.tokens.uniqueToken}`;
+      const token = await createTokens({
+        fullname: "Password Reset",
+        userId: foundUser.id,
+      });
+
+      const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
 
       try {
         await sendPasswordResetEmail(email, resetLink);
       } catch (error) {
         throw new ServiceError("Error sending password reset email", error);
       }
-
-      } catch (error) {
-        throw error;
-      }
+    } catch (error) {
+      throw error;
+    }
   } catch (error) {
     throw error;
   }
-
-  
-  
-
-  // const uniqueToken = generateUniqueToken(); // Implement a secure token generation function
-  // const uniqueTokenHash = await bcrypt.hash(uniqueToken, 10); // Hash the token
-
-  // const tokenPayload = {
-  //   userId: foundUser.id,
-  //   uniqueToken,
-  // };
-
-  // const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, {
-  //   expiresIn: "4m",
-  // });
-
-  // const expirationTime = new Date();
-  // expirationTime.setMinutes(expirationTime.getMinutes() + 4);
-
-  // await getPrisma().user.update({
-  //   where: {
-  //     id: foundUser.id,
-  //   },
-  //   data: {
-  //     uniqueToken: uniqueTokenHash, // Store the hashed token in the database
-  //     expirationTime: expirationTime, // Set the calculated expiration time
-  //   },
-  // });
-
-  // const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
-
-  // try {
-  //   await sendPasswordResetEmail(email, resetLink);
-  // } catch (error) {
-  //   throw new ServiceError("Error sending password reset email", error);
-  // }
-  // return {
-  //   message: "Password reset link sent",
-
-  //   // For testing purposes
-  //   resetLink,
-  // };
 };
 
 const resetPassword = async (data) => {
@@ -274,25 +224,32 @@ const resetPassword = async (data) => {
   if (password !== repeatPassword) {
     throw new ServiceError("Passwords do not match", 400);
   }
-  
   const decodedToken = jwt.verify(token, process.env.JWT_SECRET);
-  const { userId, uniqueToken } = decodedToken;
+  const { userId, token: uniqueToken } = decodedToken;
 
   const foundUser = await getUserById(userId); // Check if user exists
   if (!foundUser) {
     throw new ServiceError(404, "User not found");
   }
 
-  if (!foundUser.tokens) {
+  debugLog(`Reset password for user ${foundUser.email}`);
+
+  const foundToken = await getPrisma().tokens.findFirst({
+    where: {
+      userId: foundUser.id,
+    },
+  });
+
+  if (!foundToken) {
     throw new ServiceError(400, "Session expired"); // Check if user Session expired
   }
 
   const now = new Date();
-  if (now > foundUser.tokens[0].expirationTime) {
+  if (now > foundToken.expirationTime) {
     throw new ServiceError(400, "Session expired"); // Check if user Session expired
   }
 
-  const isMatch = await bcrypt.compare(uniqueToken, foundUser.tokens[0].uniqueToken); // Check if token matches
+  const isMatch = await checkToken(uniqueToken, foundToken.token); // Check if token matches
   if (!isMatch) {
     throw new ServiceError(400, "Invalid token"); // Check if token matches
   }
@@ -312,24 +269,25 @@ const resetPassword = async (data) => {
     });
 
     try {
-       await deleteTokens(foundUser.id); // Delete all tokens for the user
+      await deleteTokens(foundUser.id); // Delete all tokens for the user
     } catch (error) {
-      throw error;
+      throw new ServiceError(400, "Error deleting tokens");
     }
-   
+
     try {
       await sendPasswordResetConfirmationEmail(foundUser.email);
     } catch (error) {
-      throw new ServiceError(400, "Error sending password reset confirmation email");
+      throw new ServiceError(
+        400,
+        "Error sending password reset confirmation email"
+      );
     }
     return {
       message: "Password reset successfully",
     };
   }
-
   try {
     const uniqueToken = await createTokens({
-      expirationTime: process.env.MFA_JWT_EXPIRES_IN,
       fullname: "2FA",
       userId: foundUser.id,
     });
@@ -338,11 +296,10 @@ const resetPassword = async (data) => {
       status: 302,
       message: "2FA is required",
       uniqueToken,
-      };
-    } catch (error) {
-      throw error;
-    }
-
+    };
+  } catch (error) {
+    throw error;
+  }
 };
 
 module.exports = {

@@ -15,27 +15,11 @@ const deleteExpiredUniqueTokens = async () => {
   try {
     // Find and delete expired uniqueTokens
     const currentTime = new Date();
-    await getPrisma().twoFactor.updateMany({
+    await getPrisma().tokens.deleteMany({
       where: {
         expirationTime: {
           lt: currentTime,
         },
-      },
-      data: {
-        expirationTime: null,
-        uniqueToken: null,
-      },
-    });
-
-    await getPrisma().user.updateMany({
-      where: {
-        expirationTime: {
-          lt: currentTime,
-        },
-      },
-      data: {
-        expirationTime: null,
-        uniqueToken: null,
       },
     });
 
