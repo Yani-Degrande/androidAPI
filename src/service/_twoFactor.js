@@ -89,12 +89,19 @@ const verifyTwoFactorCode = async ({ code, jwtToken }) => {
       where: {
         id: userId,
       },
+      select: {
+        tokens: true,
+      },
     });
 
     debugLog(`verifying 2FA code for user ${foundUser.id}`);
 
     if (!foundUser) {
-      throw new ServiceError("User not found", 404);
+      throw new ServiceError(404, "No user found with this email");
+    }
+
+    if (!foundUser.tokens) {
+      throw new ServiceError(401, "Invalid url");
     }
 
     const twoFa = await getPrisma().twoFactor.findUnique({
@@ -104,15 +111,6 @@ const verifyTwoFactorCode = async ({ code, jwtToken }) => {
     });
     if (!twoFa) {
       throw new ServiceError("2FA not enabled", 404);
-    }
-
-    if (!twoFa.uniqueToken) {
-      throw new ServiceError("Invalid url", 401);
-    }
-    const isMatch = bcrypt.compare(uniqueToken, twoFa.uniqueToken);
-
-    if (!isMatch) {
-      throw new ServiceError("Invalid unique token", 401);
     }
 
     const { secretKey } = twoFa;
@@ -139,22 +137,12 @@ const verifyTwoFactorCode = async ({ code, jwtToken }) => {
       },
     });
 
-    await getPrisma().twoFactor.update({
-      where: {
-        id: twoFa.id,
-      },
-      data: {
-        uniqueToken: null,
-        expirationTime: null,
-      },
-    });
-
     return {
       accessToken,
       refreshToken,
     };
   } catch (error) {
-    throw new ServiceError("Incorrect url", 401);
+    throw error;
   }
 };
 

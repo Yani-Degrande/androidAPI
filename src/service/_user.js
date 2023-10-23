@@ -114,7 +114,6 @@ const login = async (user) => {
 
     // Check password
     const isMatch = await checkPassword(password, foundUser.password);
-    debugLog(`password match: ${isMatch}`);
     if (!isMatch) {
       throw new ServiceError(401, "Incorrect email or password");
     }
@@ -122,19 +121,17 @@ const login = async (user) => {
     // Check if 2FA is enabled
     if (twoFactorEnabled(foundUser)) {
       try {
-        const uniqueToken = await createTokens({
-          expirationTime: process.env.MFA_JWT_EXPIRES_IN,
+        const token = await createTokens({
           fullname: "2FA",
           userId: foundUser.id,
         });
 
         return {
-          status: 302,
-          message: "2FA is required",
-          uniqueToken,
+          uniqueToken: token,
+          redirectToVerification: true,
         };
       } catch (error) {
-        throw error;
+        throw new ServiceError(401, "Something went wrong, please try again.");
       }
     }
 
