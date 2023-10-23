@@ -10,6 +10,8 @@ const ServiceError = require("../core/serviceError");
 const { getUserByEmail } = require("./_user.js");
 const { generateSecretKey, backupCodes } = require("./_2fa.js");
 const { generateAccessToken, generateRefreshToken } = require("./_token.js");
+const { sendPasswordResetEmail } = require("../core/mail.js");
+const { createTokens } = require("./_tokens.js");
 
 // - Logger
 const debugLog = (message, meta = {}) => {
@@ -20,7 +22,7 @@ const debugLog = (message, meta = {}) => {
 // ============= functions =============
 
 // - Enable 2FA
-const enableTwoFactor = async ({email}) => {
+const enableTwoFactor = async ({ email }) => {
   debugLog(`enabling 2FA for user ${email}`);
 
   // Check if the user already has a TwoFactor entry
@@ -56,7 +58,6 @@ const enableTwoFactor = async ({email}) => {
 
   return secret.base32;
 };
-
 
 // - Disable 2FA
 const disableTwoFactor = async (emailUser) => {
@@ -204,32 +205,22 @@ const verifyTwoFactorCodePasswordReset = async ({ code, jwtToken }) => {
       throw new ServiceError("Invalid 2FA code", 401);
     }
 
-    const accessToken = generateAccessToken({ userId: foundUser.id });
-    const refreshToken = generateRefreshToken({ userId: foundUser.id });
+    try {
+      const token = await createTokens({
+        fullname: "Password Reset",
+        userId: foundUser.id,
+      });
 
-    await getPrisma().user.update({
-      where: {
-        id: foundUser.id,
-      },
-      data: {
-        refreshToken,
-      },
-    });
+      const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
 
-    await getPrisma().twoFactor.update({
-      where: {
-        id: twoFa.id,
-      },
-      data: {
-        uniqueToken: null,
-        expirationTime: null,
-      },
-    });
-
-    return {
-      accessToken,
-      refreshToken,
-    };
+      try {
+        await sendPasswordResetEmail(email, resetLink);
+      } catch (error) {
+        throw new ServiceError("Error sending password reset email", error);
+      }
+    } catch (error) {
+      throw error;
+    }
   } catch (error) {
     throw new ServiceError("Incorrect url", 401);
   }

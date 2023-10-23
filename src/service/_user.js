@@ -194,7 +194,14 @@ const forgotPassword = async ({ email }) => {
     const foundUser = await getUserByEmail(email); // Check if user exists
 
     if (twoFactorEnabled(foundUser)) {
-      return { redirectToVerification: true };
+      const token = await createTokens({
+        fullname: "2FA",
+        userId: foundUser.id,
+      });
+      return {
+        uniqueToken: token,
+        redirectToVerification: true,
+      };
     }
 
     try {

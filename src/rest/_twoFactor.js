@@ -23,6 +23,13 @@ const deleteUniqueToken = async (ctx) => {
   ctx.body = secret;
 };
 
+const verifyTwoFactorCodePasswordReset = async (ctx) => {
+  const secret = await twoFactorService.verifyTwoFactorCodePasswordReset(
+    ctx.request.body
+  );
+  ctx.body = secret;
+};
+
 module.exports = (app) => {
   const router = new Router({
     prefix: "/2fa",
@@ -35,6 +42,8 @@ module.exports = (app) => {
   router.post("/verify", verifyTwoFactorCode);
 
   router.post("/delete", deleteUniqueToken);
+
+  router.post("/verify-password-reset", verifyTwoFactorCodePasswordReset);
 
   app.use(router.routes()).use(router.allowedMethods());
 };
