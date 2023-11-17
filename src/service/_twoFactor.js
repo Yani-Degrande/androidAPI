@@ -10,7 +10,7 @@ const ServiceError = require("../core/serviceError");
 const { getUserByEmail } = require("./_user.js");
 const { generateSecretKey, backupCodes } = require("./_2fa.js");
 const { generateAccessToken, generateRefreshToken } = require("./_token.js");
-const { sendPasswordResetEmail } = require("../core/mail.js");
+const { sendPasswordResetEmail, sendTwoFactorEnabledConfirmationEmail } = require("../core/mail.js");
 const { createTokens } = require("./_tokens.js");
 
 // - Logger
@@ -55,6 +55,8 @@ const enableTwoFactor = async ({ email }) => {
       recoveryCodes: recoveryCodes.base32,
     },
   });
+
+  await sendTwoFactorEnabledConfirmationEmail(email);
 
   return secret.base32;
 };
