@@ -1,6 +1,7 @@
 const { PrismaClient } = require("@prisma/client");
 
 const { getLogger } = require("../core/logger");
+const { seedData, removeSeeds } = require("./seeds");
 const prisma = new PrismaClient();
 
 async function initializeData() {
@@ -15,6 +16,9 @@ async function initializeData() {
     logger.error("Failed to connect to database", e);
     closeDatabase();
   });
+  await removeSeeds();
+  await seedData();
+
   logger.info("Data initialized");
   return prisma;
 }

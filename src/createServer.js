@@ -5,8 +5,6 @@ const koaCors = require("@koa/cors");
 const koaBody = require("koa-body");
 const emoji = require("node-emoji");
 const { serializeError } = require("serialize-error");
-const cron = require("node-cron");
-const deleteExpiredUniqueTokens = require("./core/backgroundTask");
 
 const { getLogger, initializeLogger } = require("./core/logger");
 const { initializeData, closeDatabase } = require("./data");
@@ -122,8 +120,6 @@ module.exports = async function createServer() {
       ctx.body = errorBody;
     }
   });
-
-  cron.schedule("* * * * *", deleteExpiredUniqueTokens);
 
   installRest(app);
 

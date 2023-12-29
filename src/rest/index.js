@@ -1,7 +1,6 @@
 const Router = require("@koa/router");
 
-const installUsersRouter = require("./_user");
-const installTwoFactorRouter = require("./_twoFactor");
+const installTrainComponentsRouter = require("./_trainComponents");
 
 module.exports = (app) => {
   const router = new Router({
@@ -9,8 +8,7 @@ module.exports = (app) => {
   });
 
   try {
-    installUsersRouter(router);
-    installTwoFactorRouter(router);
+    installTrainComponentsRouter(router);
   } catch (err) {
     console.error(err);
   }
