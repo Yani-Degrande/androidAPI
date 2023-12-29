@@ -9,7 +9,7 @@
   "scripts": {
     "postinstall": "npx prisma generate --schema=./prisma/schema.prisma",
     "start": "npx env-cmd nodemon src/index.js",
-    "start:prod": "NODE_PATH=./src node src/index.js",
+    "start:prod": "node src/index.js",
     "generate": "npx prisma generate && npx prisma migrate deploy && npx prisma dbml --output ./db/schema.dbml && npx prisma dbml-to-sql --datasource db/mysql && npx prisma generate",
     "test": "npx env-cmd -f .env.test jest",
     "test:coverage": "npx env-cmd -f .env.test jest --coverage",
